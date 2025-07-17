@@ -1,83 +1,63 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
-const port = 3001; 
+const port = 8000;
 
-const dbPath = path.join(__dirname, 'db.json');
+// Importar la configuración de Sequelize para inicializar la conexión a la base de datos
+require('./serverMySQL/config/sequelize.config');
 
+// Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Funciones utilitarias
-function leerDB() {
-    const raw = fs.readFileSync(dbPath);
-    return JSON.parse(raw);
-}
+// Importar las rutas principales
+const apiRoutes = require('./serverMySQL/routes');
 
-function guardarDB(data) {
-    fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
-}
+// Usar las rutas con el prefijo /api
+app.use('/api', apiRoutes);
 
-// Endpoints para personas
-app.get('/api/personas', (req, res) => {
-    const data = leerDB();
-    res.json(data.personas);
+// Ruta raíz para verificar que el servidor está funcionando
+app.get('/', (req, res) => {
+    res.json({
+        message: 'HostelDB API Server',
+        status: 'OK',
+        version: '1.0.0',
+        endpoints: {
+            status: '/api/status',
+            docs: '/api/docs',
+            personas: '/api/personas',
+            habitaciones: '/api/habitaciones',
+            reservas: '/api/reservas',
+            notificaciones: '/api/notificaciones',
+            conversaciones: '/api/conversaciones',
+            mensajes: '/api/mensajes'
+        }
+    });
 });
 
-app.get('/api/personas/:id', (req, res) => {
-    const id = req.params.id;
-    const data = leerDB();
-    const persona = data.personas.find(p => p.id === id);
-    if (persona) {
-        res.json(persona);
-    } else {
-        res.status(404).json({ error: 'Persona no encontrada' });
-    }
+// Manejo de rutas no encontradas
+app.use('*', (req, res) => {
+    res.status(404).json({
+        error: 'Endpoint no encontrado',
+        message: 'La ruta solicitada no existe',
+        availableEndpoints: '/api/docs'
+    });
 });
 
-app.post('/api/personas', (req, res) => {
-    const data = leerDB();
-    const nuevaPersona = {
-        id: Date.now().toString(),
-        ...req.body
-    };
-    data.personas.push(nuevaPersona);
-    guardarDB(data);
-    res.status(201).json(nuevaPersona);
-});
-
-app.put('/api/personas/:id', (req, res) => {
-    const id = req.params.id;
-    const data = leerDB();
-    const index = data.personas.findIndex(p => p.id === id);
-
-    if (index !== -1) {
-        data.personas[index] = { ...data.personas[index], ...req.body };
-        guardarDB(data);
-        res.json(data.personas[index]);
-    } else {
-        res.status(404).json({ error: 'Persona no encontrada' });
-    }
-});
-
-app.delete('/api/personas/:id', (req, res) => {
-    const id = req.params.id;
-    const data = leerDB();
-    const index = data.personas.findIndex(p => p.id === id);
-
-    if (index !== -1) {
-        const eliminado = data.personas.splice(index, 1)[0];
-        guardarDB(data);
-        res.json({ mensaje: 'Persona eliminada', persona: eliminado });
-    } else {
-        res.status(404).json({ error: 'Persona no encontrada' });
-    }
+// Manejo de errores global
+app.use((error, req, res, next) => {
+    console.error('Error:', error.message);
+    res.status(500).json({
+        error: 'Error interno del servidor',
+        message: error.message
+    });
 });
 
 // Inicio del servidor
 app.listen(port, () => {
-    console.log(`Servidor backend escuchando en http://localhost:${port}`);
+    console.log(`HostelDB Server listening at port ${port}`);
+    console.log(`API Documentation: http://localhost:${port}/api/docs`);
+    console.log(`API Status: http://localhost:${port}/api/status`);
 });
