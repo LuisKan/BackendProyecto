@@ -2,7 +2,7 @@ const { Reserva, Habitacion, Persona } = require('../models');
 const { Op } = require('sequelize');
 
 const reservaController = {
-    // Obtener todas las reservas con información de habitación y usuario
+    // Obtener todas las reservas - Formato Postman
     obtenerTodas: async (req, res) => {
         try {
             const reservas = await Reserva.findAll({
@@ -10,302 +10,162 @@ const reservaController = {
                     {
                         model: Habitacion,
                         as: 'habitacion'
-                    },
-                    {
-                        model: Persona,
-                        as: 'usuario'
                     }
-                ]
+                ],
+                order: [['fechaCreacion', 'DESC']]
             });
-            res.json(reservas);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al obtener las reservas',
-                detalle: error.message 
-            });
-        }
-    },
 
-    // Obtener reserva por ID
-    obtenerPorId: async (req, res) => {
-        try {
-            const { id } = req.params;
-            const reserva = await Reserva.findByPk(id, {
-                include: [
-                    {
-                        model: Habitacion,
-                        as: 'habitacion'
-                    },
-                    {
-                        model: Persona,
-                        as: 'usuario'
-                    }
-                ]
-            });
-            
-            if (!reserva) {
-                return res.status(404).json({ error: 'Reserva no encontrada' });
+            if (reservas.length === 0) {
+                return res.status(404).json({ 
+                    error: 'Reserva no encontrada' 
+                });
             }
-            
-            res.json(reserva);
+
+            // Formatear respuesta según especificación Postman
+            const reservasFormateadas = reservas.map(reserva => ({
+                id: reserva.id.toString(),
+                habitacionId: reserva.habitacionId.toString(),
+                tituloHabitacion: reserva.habitacion ? reserva.habitacion.nombre : `Habitación ${reserva.habitacionId}`,
+                imagen: reserva.habitacion ? (reserva.habitacion.portada || "/Habitaciones/default.webp") : "/Habitaciones/default.webp",
+                usuarioId: reserva.usuarioId.toString(),
+                usuarioNombre: reserva.usuarioNombre,
+                correo: reserva.correo,
+                checkIn: reserva.checkIn,
+                checkOut: reserva.checkOut,
+                adultos: reserva.adultos,
+                ninos: reserva.ninos,
+                personas: reserva.personas || `${reserva.adultos} Adulto(s), ${reserva.ninos} Niño(s)`,
+                precio: reserva.precio,
+                estado: reserva.estado,
+                fechaCreacion: reserva.fechaCreacion ? reserva.fechaCreacion.toISOString() : new Date().toISOString()
+            }));
+
+            res.json({ reservas: reservasFormateadas });
         } catch (error) {
+            console.error('Error al obtener reservas:', error);
             res.status(500).json({ 
-                error: 'Error al obtener la reserva',
-                detalle: error.message 
+                error: 'Error interno del servidor'
             });
         }
     },
 
-    // Crear nueva reserva
+    // Crear nueva reserva - Formato Postman
     crear: async (req, res) => {
         try {
+            const { habitacionId, usuarioId, usuarioNombre, correo, checkIn, checkOut, adultos, ninos, precio } = req.body;
+            
+            // Validar campos obligatorios
+            if (!habitacionId) {
+                return res.status(400).json({ 
+                    error: "El campo 'habitacionId' es obligatorio"
+                });
+            }
+
+            // Verificar que la habitación existe
+            const habitacion = await Habitacion.findByPk(habitacionId);
+            if (!habitacion) {
+                return res.status(400).json({ 
+                    error: "El campo 'habitacionId' es obligatorio"
+                });
+            }
+
+            // Crear la reserva
             const nuevaReserva = await Reserva.create({
-                ...req.body,
+                habitacionId,
+                usuarioId,
+                usuarioNombre,
+                correo,
+                checkIn,
+                checkOut,
+                adultos: adultos || 1,
+                ninos: ninos || 0,
+                personas: `${adultos || 1} Adulto(s), ${ninos || 0} Niño(s)`,
+                precio,
+                estado: 'pendiente',
                 fechaCreacion: new Date()
             });
-            
-            // Obtener la reserva completa con relaciones
-            const reservaCompleta = await Reserva.findByPk(nuevaReserva.id, {
-                include: [
-                    {
-                        model: Habitacion,
-                        as: 'habitacion'
-                    },
-                    {
-                        model: Persona,
-                        as: 'usuario'
-                    }
-                ]
-            });
-            
-            res.status(201).json(reservaCompleta);
+
+            // Formatear respuesta según especificación Postman
+            const respuesta = {
+                mensaje: "Reserva creada exitosamente",
+                id: nuevaReserva.id.toString()
+            };
+
+            res.status(201).json(respuesta);
         } catch (error) {
+            console.error('Error al crear reserva:', error);
             res.status(500).json({ 
-                error: 'Error al crear la reserva',
-                detalle: error.message 
+                error: 'Error interno del servidor'
             });
         }
     },
 
-    // Actualizar reserva
+    // Actualizar reserva - Formato Postman
     actualizar: async (req, res) => {
         try {
             const { id } = req.params;
-            const [filasAfectadas] = await Reserva.update(req.body, {
-                where: { id }
-            });
+            const { checkIn, checkOut, estado } = req.body;
             
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Reserva no encontrada' });
+            // Buscar la reserva
+            const reserva = await Reserva.findByPk(id);
+            if (!reserva) {
+                return res.status(403).json({ 
+                    error: 'Acceso denegado' 
+                });
             }
-            
-            const reservaActualizada = await Reserva.findByPk(id, {
-                include: [
-                    {
-                        model: Habitacion,
-                        as: 'habitacion'
-                    },
-                    {
-                        model: Persona,
-                        as: 'usuario'
-                    }
-                ]
-            });
-            
-            res.json(reservaActualizada);
+
+            // Actualizar la reserva
+            await Reserva.update(
+                { checkIn, checkOut, estado },
+                { where: { id } }
+            );
+
+            // Formatear respuesta según especificación Postman
+            const respuesta = {
+                mensaje: "Reserva actualizada correctamente"
+            };
+
+            res.json(respuesta);
         } catch (error) {
+            console.error('Error al actualizar reserva:', error);
             res.status(500).json({ 
-                error: 'Error al actualizar la reserva',
-                detalle: error.message 
+                error: 'Error interno del servidor'
             });
         }
     },
 
-    // Eliminar reserva
+    // Eliminar reserva - Formato Postman
     eliminar: async (req, res) => {
         try {
             const { id } = req.params;
-            const filasAfectadas = await Reserva.destroy({
+            
+            // Buscar la reserva antes de eliminarla
+            const reserva = await Reserva.findByPk(id);
+            if (!reserva) {
+                return res.status(404).json({ 
+                    error: 'Reserva no encontrada' 
+                });
+            }
+
+            // Eliminar la reserva
+            await Reserva.destroy({
                 where: { id }
             });
-            
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Reserva no encontrada' });
-            }
-            
-            res.json({ mensaje: 'Reserva eliminada correctamente' });
+
+            // Formatear respuesta según especificación Postman
+            const respuesta = {
+                mensaje: "Reserva eliminada"
+            };
+
+            res.json(respuesta);
         } catch (error) {
+            console.error('Error al eliminar reserva:', error);
             res.status(500).json({ 
-                error: 'Error al eliminar la reserva',
-                detalle: error.message 
+                error: 'Error interno del servidor'
             });
         }
     },
 
-    // Obtener reservas por usuario
-    obtenerPorUsuario: async (req, res) => {
-        try {
-            const { usuarioId } = req.params;
-            const reservas = await Reserva.findAll({
-                where: { usuarioId },
-                include: [
-                    {
-                        model: Habitacion,
-                        as: 'habitacion'
-                    }
-                ]
-            });
-            
-            res.json(reservas);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al obtener las reservas del usuario',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Obtener reservas por habitación
-    obtenerPorHabitacion: async (req, res) => {
-        try {
-            const { habitacionId } = req.params;
-            const reservas = await Reserva.findAll({
-                where: { habitacionId },
-                include: [
-                    {
-                        model: Persona,
-                        as: 'usuario'
-                    }
-                ]
-            });
-            
-            res.json(reservas);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al obtener las reservas de la habitación',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Obtener reservas por estado
-    obtenerPorEstado: async (req, res) => {
-        try {
-            const { estado } = req.params;
-            const reservas = await Reserva.findAll({
-                where: { estado },
-                include: [
-                    {
-                        model: Habitacion,
-                        as: 'habitacion'
-                    },
-                    {
-                        model: Persona,
-                        as: 'usuario'
-                    }
-                ]
-            });
-            
-            res.json(reservas);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al obtener las reservas por estado',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Cambiar estado de reserva
-    cambiarEstado: async (req, res) => {
-        try {
-            const { id } = req.params;
-            const { estado } = req.body;
-            
-            const [filasAfectadas] = await Reserva.update(
-                { estado },
-                { where: { id } }
-            );
-            
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Reserva no encontrada' });
-            }
-            
-            const reservaActualizada = await Reserva.findByPk(id, {
-                include: [
-                    {
-                        model: Habitacion,
-                        as: 'habitacion'
-                    },
-                    {
-                        model: Persona,
-                        as: 'usuario'
-                    }
-                ]
-            });
-            
-            res.json(reservaActualizada);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al cambiar el estado de la reserva',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Verificar disponibilidad de habitación en fechas específicas
-    verificarDisponibilidad: async (req, res) => {
-        try {
-            const { habitacionId, checkIn, checkOut } = req.query;
-            
-            const reservasConflicto = await Reserva.findAll({
-                where: {
-                    habitacionId,
-                    estado: {
-                        [Op.in]: ['aceptada', 'confirmada']
-                    },
-                    [Op.or]: [
-                        {
-                            checkIn: {
-                                [Op.between]: [checkIn, checkOut]
-                            }
-                        },
-                        {
-                            checkOut: {
-                                [Op.between]: [checkIn, checkOut]
-                            }
-                        },
-                        {
-                            [Op.and]: [
-                                {
-                                    checkIn: {
-                                        [Op.lte]: checkIn
-                                    }
-                                },
-                                {
-                                    checkOut: {
-                                        [Op.gte]: checkOut
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                }
-            });
-            
-            const disponible = reservasConflicto.length === 0;
-            
-            res.json({
-                disponible,
-                reservasConflicto: reservasConflicto.length,
-                mensaje: disponible ? 'Habitación disponible' : 'Habitación no disponible en esas fechas'
-            });
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al verificar disponibilidad',
-                detalle: error.message 
-            });
-        }
-    }
 };
 
 module.exports = reservaController;

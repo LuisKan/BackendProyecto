@@ -16,6 +16,17 @@ router.post('/', conversacionController.crear);
 // DELETE /api/conversaciones/:id - Eliminar conversación
 router.delete('/:id', conversacionController.eliminar);
 
+// Rutas específicas para mensajes dentro de conversaciones
+
+// POST /api/v1/conversaciones/:id/mensajes - Enviar mensaje a conversación
+router.post('/:id/mensajes', conversacionController.enviarMensaje);
+
+// PUT /api/v1/conversaciones/:idConversacion/mensajes/:idMensaje - Editar mensaje
+router.put('/:idConversacion/mensajes/:idMensaje', conversacionController.editarMensaje);
+
+// DELETE /api/v1/conversaciones/:id/mensajes/:mensajeId - Eliminar mensaje
+router.delete('/:id/mensajes/:mensajeId', conversacionController.eliminarMensaje);
+
 // Rutas específicas
 
 // GET /api/conversaciones/persona/:personaId - Obtener conversaciones de una persona

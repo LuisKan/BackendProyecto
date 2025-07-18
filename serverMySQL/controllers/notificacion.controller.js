@@ -1,262 +1,217 @@
 const { Notificacion, Persona } = require('../models');
 
 const notificacionController = {
-    // Obtener todas las notificaciones
-    obtenerTodas: async (req, res) => {
-        try {
-            const notificaciones = await Notificacion.findAll({
-                include: [{
-                    model: Persona,
-                    as: 'usuario'
-                }],
-                order: [['fecha', 'DESC']]
-            });
-            res.json(notificaciones);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al obtener las notificaciones',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Obtener notificación por ID
+    // Obtener notificación por ID - Formato Postman
     obtenerPorId: async (req, res) => {
         try {
             const { id } = req.params;
-            const notificacion = await Notificacion.findByPk(id, {
-                include: [{
-                    model: Persona,
-                    as: 'usuario'
-                }]
-            });
+            const notificacion = await Notificacion.findByPk(id);
             
             if (!notificacion) {
-                return res.status(404).json({ error: 'Notificación no encontrada' });
+                return res.status(404).json({ 
+                    error: 'Notificación no encontrada' 
+                });
             }
             
-            res.json(notificacion);
+            // Formatear respuesta según especificación Postman
+            const respuesta = {
+                id: notificacion.id.toString(),
+                id_usuario: notificacion.usuarioId.toString(),
+                tipo: notificacion.tipo || "sistema",
+                estado: notificacion.tipo === "leida" ? "leído" : "sin leer",
+                titulo: notificacion.texto || "",
+                fecha: notificacion.fecha ? new Date(notificacion.fecha).toISOString() : new Date().toISOString()
+            };
+            
+            res.json(respuesta);
         } catch (error) {
+            console.error('Error al obtener notificación:', error);
             res.status(500).json({ 
-                error: 'Error al obtener la notificación',
-                detalle: error.message 
+                error: 'Error interno del servidor'
             });
         }
     },
 
-    // Crear nueva notificación
+    // Obtener todas las notificaciones de un usuario - Formato Postman
+    obtenerPorUsuario: async (req, res) => {
+        try {
+            const { id_usuario } = req.params;
+            
+            // Verificar que el usuario existe
+            const usuario = await Persona.findByPk(id_usuario);
+            if (!usuario) {
+                return res.status(404).json({ 
+                    error: 'Usuario no encontrado' 
+                });
+            }
+            
+            const notificaciones = await Notificacion.findAll({
+                where: { usuarioId: id_usuario },
+                order: [['fecha', 'DESC']]
+            });
+            
+            // Formatear respuesta según especificación Postman
+            const respuesta = notificaciones.map(notif => ({
+                id: notif.id.toString(),
+                id_usuario: notif.usuarioId.toString(),
+                tipo: notif.tipo === "leida" ? "sistema" : (notif.tipo || "mensaje"),
+                estado: notif.tipo === "leida" ? "leído" : "sin leer",
+                titulo: notif.texto || "",
+                fecha: notif.fecha ? new Date(notif.fecha).toISOString() : new Date().toISOString()
+            }));
+            
+            res.json(respuesta);
+        } catch (error) {
+            console.error('Error al obtener notificaciones del usuario:', error);
+            res.status(500).json({ 
+                error: 'Error interno del servidor'
+            });
+        }
+    },
+
+    // Crear nueva notificación - Formato Postman
     crear: async (req, res) => {
         try {
+            const { id_usuario, tipo, estado, titulo, fecha } = req.body;
+            
+            // Validar campos requeridos
+            if (!id_usuario || !tipo || !estado || !titulo) {
+                return res.status(400).json({ 
+                    error: 'Datos requeridos faltantes o inválidos'
+                });
+            }
+            
+            // Verificar que el usuario existe
+            const usuario = await Persona.findByPk(id_usuario);
+            if (!usuario) {
+                return res.status(400).json({ 
+                    error: 'Datos requeridos faltantes o inválidos'
+                });
+            }
+            
+            // Convertir estado a tipo interno
+            const tipoInterno = estado === "leído" ? "leida" : tipo;
+            
             const nuevaNotificacion = await Notificacion.create({
-                ...req.body,
-                fecha: req.body.fecha || new Date()
+                usuarioId: id_usuario,
+                texto: titulo,
+                tipo: tipoInterno,
+                fecha: fecha ? new Date(fecha) : new Date()
             });
             
-            // Obtener la notificación completa con relaciones
-            const notificacionCompleta = await Notificacion.findByPk(nuevaNotificacion.id, {
-                include: [{
-                    model: Persona,
-                    as: 'usuario'
-                }]
-            });
+            // Formatear respuesta según especificación Postman
+            const respuesta = {
+                id: nuevaNotificacion.id.toString(),
+                id_usuario: nuevaNotificacion.usuarioId.toString(),
+                tipo: tipo,
+                estado: estado,
+                titulo: nuevaNotificacion.texto,
+                fecha: nuevaNotificacion.fecha ? new Date(nuevaNotificacion.fecha).toISOString() : new Date().toISOString()
+            };
             
-            res.status(201).json(notificacionCompleta);
+            res.status(201).json(respuesta);
         } catch (error) {
+            console.error('Error al crear notificación:', error);
             res.status(500).json({ 
-                error: 'Error al crear la notificación',
-                detalle: error.message 
+                error: 'Error al intentar registrar la notificación'
             });
         }
     },
 
-    // Actualizar notificación
+    // Actualizar notificación - Formato Postman
     actualizar: async (req, res) => {
         try {
             const { id } = req.params;
-            const [filasAfectadas] = await Notificacion.update(req.body, {
-                where: { id }
-            });
+            const { estado } = req.body;
             
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Notificación no encontrada' });
+            // Validar campo estado
+            if (!estado) {
+                return res.status(400).json({ 
+                    error: "Campo 'estado' inválido o faltante"
+                });
             }
             
-            const notificacionActualizada = await Notificacion.findByPk(id, {
-                include: [{
-                    model: Persona,
-                    as: 'usuario'
-                }]
-            });
-            
-            res.json(notificacionActualizada);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al actualizar la notificación',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Eliminar notificación
-    eliminar: async (req, res) => {
-        try {
-            const { id } = req.params;
-            const filasAfectadas = await Notificacion.destroy({
-                where: { id }
-            });
-            
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Notificación no encontrada' });
+            if (estado !== "leído" && estado !== "sin leer") {
+                return res.status(400).json({ 
+                    error: "Campo 'estado' inválido o faltante"
+                });
             }
             
-            res.json({ mensaje: 'Notificación eliminada correctamente' });
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al eliminar la notificación',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Obtener notificaciones por usuario
-    obtenerPorUsuario: async (req, res) => {
-        try {
-            const { usuarioId } = req.params;
-            const notificaciones = await Notificacion.findAll({
-                where: { usuarioId },
-                order: [['fecha', 'DESC']]
-            });
+            // Buscar la notificación
+            const notificacion = await Notificacion.findByPk(id);
+            if (!notificacion) {
+                return res.status(404).json({ 
+                    error: 'Notificación no encontrada' 
+                });
+            }
             
-            res.json(notificaciones);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al obtener las notificaciones del usuario',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Obtener notificaciones por tipo
-    obtenerPorTipo: async (req, res) => {
-        try {
-            const { tipo } = req.params;
-            const notificaciones = await Notificacion.findAll({
-                where: { tipo },
-                include: [{
-                    model: Persona,
-                    as: 'usuario'
-                }],
-                order: [['fecha', 'DESC']]
-            });
+            // Convertir estado a tipo interno
+            const tipoInterno = estado === "leído" ? "leida" : (notificacion.tipo === "leida" ? "mensaje" : notificacion.tipo);
             
-            res.json(notificaciones);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al obtener las notificaciones por tipo',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Marcar notificaciones como leídas (cambiar tipo)
-    marcarComoLeida: async (req, res) => {
-        try {
-            const { id } = req.params;
-            const [filasAfectadas] = await Notificacion.update(
-                { tipo: 'leida' },
+            // Actualizar la notificación
+            await Notificacion.update(
+                { tipo: tipoInterno },
                 { where: { id } }
             );
             
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Notificación no encontrada' });
-            }
+            // Obtener la notificación actualizada
+            const notificacionActualizada = await Notificacion.findByPk(id);
             
-            const notificacionActualizada = await Notificacion.findByPk(id, {
-                include: [{
-                    model: Persona,
-                    as: 'usuario'
-                }]
-            });
+            // Formatear respuesta según especificación Postman
+            const respuesta = {
+                id: notificacionActualizada.id.toString(),
+                id_usuario: notificacionActualizada.usuarioId.toString(),
+                tipo: notificacionActualizada.tipo === "leida" ? "sistema" : (notificacionActualizada.tipo || "mensaje"),
+                estado: estado,
+                titulo: notificacionActualizada.texto || "",
+                fecha: notificacionActualizada.fecha ? new Date(notificacionActualizada.fecha).toISOString() : new Date().toISOString()
+            };
             
-            res.json(notificacionActualizada);
+            res.json(respuesta);
         } catch (error) {
+            console.error('Error al actualizar notificación:', error);
             res.status(500).json({ 
-                error: 'Error al marcar la notificación como leída',
-                detalle: error.message 
+                error: 'Error al intentar actualizar la notificación'
             });
         }
     },
 
-    // Marcar todas las notificaciones de un usuario como leídas
-    marcarTodasComoLeidasPorUsuario: async (req, res) => {
+    // Eliminar notificación - Formato Postman
+    eliminar: async (req, res) => {
         try {
-            const { usuarioId } = req.params;
-            const [filasAfectadas] = await Notificacion.update(
-                { tipo: 'leida' },
-                { 
-                    where: { 
-                        usuarioId,
-                        tipo: { [require('sequelize').Op.ne]: 'leida' }
-                    } 
+            const { id } = req.params;
+            
+            // Buscar la notificación antes de eliminarla
+            const notificacion = await Notificacion.findByPk(id);
+            if (!notificacion) {
+                return res.status(404).json({ 
+                    error: 'Notificación no encontrada' 
+                });
+            }
+            
+            // Eliminar la notificación
+            await Notificacion.destroy({
+                where: { id }
+            });
+            
+            // Formatear respuesta según especificación Postman
+            const respuesta = {
+                mensaje: "Notificación eliminada correctamente",
+                notificacion: {
+                    id: "",
+                    id_usuario: "",
+                    tipo: "",
+                    estado: "",
+                    titulo: "",
+                    fecha: ""
                 }
-            );
+            };
             
-            res.json({ 
-                mensaje: `${filasAfectadas} notificaciones marcadas como leídas` 
-            });
+            res.json(respuesta);
         } catch (error) {
+            console.error('Error al eliminar notificación:', error);
             res.status(500).json({ 
-                error: 'Error al marcar las notificaciones como leídas',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Crear notificación para reserva
-    crearParaReserva: async (req, res) => {
-        try {
-            const { usuarioId, reservaId, estadoReserva } = req.body;
-            
-            let texto = '';
-            let tipo = '';
-            
-            switch (estadoReserva) {
-                case 'aceptada':
-                    texto = `Tu reserva #${reservaId} ha sido aceptada`;
-                    tipo = 'aceptada';
-                    break;
-                case 'rechazada':
-                    texto = `Tu reserva #${reservaId} ha sido rechazada`;
-                    tipo = 'rechazada';
-                    break;
-                case 'confirmada':
-                    texto = `Tu reserva #${reservaId} ha sido confirmada`;
-                    tipo = 'confirmada';
-                    break;
-                default:
-                    texto = `Nueva actualización en tu reserva #${reservaId}`;
-                    tipo = 'nueva';
-            }
-            
-            const nuevaNotificacion = await Notificacion.create({
-                usuarioId,
-                texto,
-                tipo,
-                fecha: new Date()
-            });
-            
-            const notificacionCompleta = await Notificacion.findByPk(nuevaNotificacion.id, {
-                include: [{
-                    model: Persona,
-                    as: 'usuario'
-                }]
-            });
-            
-            res.status(201).json(notificacionCompleta);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al crear la notificación de reserva',
-                detalle: error.message 
+                error: 'Error al intentar eliminar la notificación'
             });
         }
     }

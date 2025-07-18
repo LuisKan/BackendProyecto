@@ -42,7 +42,7 @@ Mensaje.belongsTo(Conversacion, { foreignKey: 'conversacion_id', as: 'conversaci
 
 // Persona - Mensaje (1:N)
 Persona.hasMany(Mensaje, { foreignKey: 'emisor', as: 'mensajesEnviados' });
-Mensaje.belongsTo(Persona, { foreignKey: 'emisor', as: 'emisor' });
+Mensaje.belongsTo(Persona, { foreignKey: 'emisor', as: 'personaEmisor' });
 
 // Relación many-to-many entre Persona y Conversacion a través de ParticipanteConversacion
 Persona.belongsToMany(Conversacion, {

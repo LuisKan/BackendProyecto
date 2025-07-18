@@ -7,10 +7,34 @@ const habitacionController = {
             const habitaciones = await Habitacion.findAll({
                 include: [{
                     model: HabitacionAmenity,
-                    as: 'amenities'
+                    as: 'amenities',
+                    attributes: ['amenity']
                 }]
             });
-            res.json(habitaciones);
+            
+            // Formatear la respuesta para que coincida con el frontend
+            const habitacionesFormateadas = habitaciones.map(habitacion => {
+                const data = habitacion.toJSON();
+                
+                // Convertir amenities de objetos a array simple
+                data.amenities = data.amenities ? data.amenities.map(a => a.amenity) : [];
+                
+                // Agregar precioDesglose si existe el precio
+                if (data.precio) {
+                    const precioMatch = data.precio.match(/\$(\d+)\s*-\s*\$(\d+)/);
+                    if (precioMatch) {
+                        data.precioDesglose = {
+                            corto: precioMatch[1],
+                            medio: Math.round((parseInt(precioMatch[1]) + parseInt(precioMatch[2])) / 2).toString(),
+                            largo: precioMatch[2]
+                        };
+                    }
+                }
+                
+                return data;
+            });
+            
+            res.json(habitacionesFormateadas);
         } catch (error) {
             res.status(500).json({ 
                 error: 'Error al obtener las habitaciones',
@@ -26,7 +50,8 @@ const habitacionController = {
             const habitacion = await Habitacion.findByPk(id, {
                 include: [{
                     model: HabitacionAmenity,
-                    as: 'amenities'
+                    as: 'amenities',
+                    attributes: ['amenity']
                 }]
             });
             
@@ -34,7 +59,23 @@ const habitacionController = {
                 return res.status(404).json({ error: 'Habitación no encontrada' });
             }
             
-            res.json(habitacion);
+            // Formatear la respuesta
+            const data = habitacion.toJSON();
+            data.amenities = data.amenities ? data.amenities.map(a => a.amenity) : [];
+            
+            // Agregar precioDesglose si existe el precio
+            if (data.precio) {
+                const precioMatch = data.precio.match(/\$(\d+)\s*-\s*\$(\d+)/);
+                if (precioMatch) {
+                    data.precioDesglose = {
+                        corto: precioMatch[1],
+                        medio: Math.round((parseInt(precioMatch[1]) + parseInt(precioMatch[2])) / 2).toString(),
+                        largo: precioMatch[2]
+                    };
+                }
+            }
+            
+            res.json(data);
         } catch (error) {
             res.status(500).json({ 
                 error: 'Error al obtener la habitación',
@@ -46,7 +87,12 @@ const habitacionController = {
     // Crear nueva habitación
     crear: async (req, res) => {
         try {
-            const { amenities, ...habitacionData } = req.body;
+            const { amenities, precioDesglose, ...habitacionData } = req.body;
+            
+            // Convertir precioDesglose a formato de precio si está presente
+            if (precioDesglose && precioDesglose.corto && precioDesglose.largo) {
+                habitacionData.precio = `$${precioDesglose.corto} - $${precioDesglose.largo}`;
+            }
             
             // Crear la habitación
             const nuevaHabitacion = await Habitacion.create(habitacionData);
@@ -64,11 +110,21 @@ const habitacionController = {
             const habitacionCompleta = await Habitacion.findByPk(nuevaHabitacion.id, {
                 include: [{
                     model: HabitacionAmenity,
-                    as: 'amenities'
+                    as: 'amenities',
+                    attributes: ['amenity']
                 }]
             });
             
-            res.status(201).json(habitacionCompleta);
+            // Formatear la respuesta
+            const data = habitacionCompleta.toJSON();
+            data.amenities = data.amenities ? data.amenities.map(a => a.amenity) : [];
+            
+            // Agregar precioDesglose en la respuesta
+            if (precioDesglose) {
+                data.precioDesglose = precioDesglose;
+            }
+            
+            res.status(201).json(data);
         } catch (error) {
             res.status(500).json({ 
                 error: 'Error al crear la habitación',
@@ -81,7 +137,12 @@ const habitacionController = {
     actualizar: async (req, res) => {
         try {
             const { id } = req.params;
-            const { amenities, ...habitacionData } = req.body;
+            const { amenities, precioDesglose, ...habitacionData } = req.body;
+            
+            // Convertir precioDesglose a formato de precio si está presente
+            if (precioDesglose && precioDesglose.corto && precioDesglose.largo) {
+                habitacionData.precio = `$${precioDesglose.corto} - $${precioDesglose.largo}`;
+            }
             
             // Actualizar datos de la habitación
             const [filasAfectadas] = await Habitacion.update(habitacionData, {
@@ -113,11 +174,30 @@ const habitacionController = {
             const habitacionActualizada = await Habitacion.findByPk(id, {
                 include: [{
                     model: HabitacionAmenity,
-                    as: 'amenities'
+                    as: 'amenities',
+                    attributes: ['amenity']
                 }]
             });
             
-            res.json(habitacionActualizada);
+            // Formatear la respuesta
+            const data = habitacionActualizada.toJSON();
+            data.amenities = data.amenities ? data.amenities.map(a => a.amenity) : [];
+            
+            // Agregar precioDesglose en la respuesta
+            if (precioDesglose) {
+                data.precioDesglose = precioDesglose;
+            } else if (data.precio) {
+                const precioMatch = data.precio.match(/\$(\d+)\s*-\s*\$(\d+)/);
+                if (precioMatch) {
+                    data.precioDesglose = {
+                        corto: precioMatch[1],
+                        medio: Math.round((parseInt(precioMatch[1]) + parseInt(precioMatch[2])) / 2).toString(),
+                        largo: precioMatch[2]
+                    };
+                }
+            }
+            
+            res.json(data);
         } catch (error) {
             res.status(500).json({ 
                 error: 'Error al actualizar la habitación',
@@ -131,21 +211,49 @@ const habitacionController = {
         try {
             const { id } = req.params;
             
+            // Obtener la habitación antes de eliminarla para la respuesta
+            const habitacion = await Habitacion.findByPk(id, {
+                include: [{
+                    model: HabitacionAmenity,
+                    as: 'amenities',
+                    attributes: ['amenity']
+                }]
+            });
+            
+            if (!habitacion) {
+                return res.status(404).json({ error: 'Habitación no encontrada' });
+            }
+            
+            // Formatear la habitación para la respuesta
+            const habitacionData = habitacion.toJSON();
+            habitacionData.amenities = habitacionData.amenities ? habitacionData.amenities.map(a => a.amenity) : [];
+            
+            // Agregar precioDesglose si existe el precio
+            if (habitacionData.precio) {
+                const precioMatch = habitacionData.precio.match(/\$(\d+)\s*-\s*\$(\d+)/);
+                if (precioMatch) {
+                    habitacionData.precioDesglose = {
+                        corto: precioMatch[1],
+                        medio: Math.round((parseInt(precioMatch[1]) + parseInt(precioMatch[2])) / 2).toString(),
+                        largo: precioMatch[2]
+                    };
+                }
+            }
+            
             // Eliminar amenities primero
             await HabitacionAmenity.destroy({
                 where: { habitacion_id: id }
             });
             
             // Eliminar habitación
-            const filasAfectadas = await Habitacion.destroy({
+            await Habitacion.destroy({
                 where: { id }
             });
             
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Habitación no encontrada' });
-            }
-            
-            res.json({ mensaje: 'Habitación eliminada correctamente' });
+            res.json({ 
+                mensaje: 'Habitación eliminada',
+                habitacion: habitacionData
+            });
         } catch (error) {
             res.status(500).json({ 
                 error: 'Error al eliminar la habitación',

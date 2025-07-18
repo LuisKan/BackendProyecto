@@ -2,38 +2,22 @@ const express = require('express');
 const router = express.Router();
 const reservaController = require('../controllers/reserva.controller');
 
-// Rutas CRUD básicas
+// Rutas compatibles con Postman Collection
+// Nota: Las rutas se montan en /api/v1/reservas, por lo que:
+// - /api/v1/reservas/mis-reservas será GET /mis-reservas 
+// - /api/v1/reservas/ será POST /reservas
+// - etc.
 
-// GET /api/reservas - Obtener todas las reservas
-router.get('/', reservaController.obtenerTodas);
+// GET /api/v1/reservas/mis-reservas - Obtener todas las reservas
+router.get('/mis-reservas', reservaController.obtenerTodas);
 
-// GET /api/reservas/:id - Obtener reserva por ID
-router.get('/:id', reservaController.obtenerPorId);
-
-// POST /api/reservas - Crear nueva reserva
+// POST /api/v1/reservas/ - Crear nueva reserva  
 router.post('/', reservaController.crear);
 
-// PUT /api/reservas/:id - Actualizar reserva
+// PUT /api/v1/reservas/{id} - Actualizar reserva
 router.put('/:id', reservaController.actualizar);
 
-// DELETE /api/reservas/:id - Eliminar reserva
-router.delete('/:id', reservaController.eliminar);
-
-// Rutas específicas
-
-// GET /api/reservas/usuario/:usuarioId - Obtener reservas por usuario
-router.get('/usuario/:usuarioId', reservaController.obtenerPorUsuario);
-
-// GET /api/reservas/habitacion/:habitacionId - Obtener reservas por habitación
-router.get('/habitacion/:habitacionId', reservaController.obtenerPorHabitacion);
-
-// GET /api/reservas/estado/:estado - Obtener reservas por estado
-router.get('/estado/:estado', reservaController.obtenerPorEstado);
-
-// PATCH /api/reservas/:id/estado - Cambiar estado de reserva
-router.patch('/:id/estado', reservaController.cambiarEstado);
-
-// GET /api/reservas/disponibilidad/verificar - Verificar disponibilidad de habitación
-router.get('/disponibilidad/verificar', reservaController.verificarDisponibilidad);
+// DELETE /api/v1/reservas/mis-reservas/{id} - Eliminar reserva
+router.delete('/mis-reservas/:id', reservaController.eliminar);
 
 module.exports = router;
