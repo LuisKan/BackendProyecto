@@ -8,8 +8,10 @@ const reservaController = require('../controllers/reserva.controller');
 // - /api/v1/reservas/ será POST /reservas
 // - etc.
 
-// GET /api/v1/reservas/mis-reservas - Obtener todas las reservas
-router.get('/mis-reservas', reservaController.obtenerTodas);
+// GET /api/v1/reservas/ - Obtener todas las reservas
+router.get('/', reservaController.obtenerTodas);
+// GET /api/v1/reservas/ - Obtener reservas del usuario autenticado
+router.get('/:id', reservaController.obtenerPorId);
 
 // POST /api/v1/reservas/ - Crear nueva reserva  
 router.post('/', reservaController.crear);
@@ -17,7 +19,7 @@ router.post('/', reservaController.crear);
 // PUT /api/v1/reservas/{id} - Actualizar reserva
 router.put('/:id', reservaController.actualizar);
 
-// DELETE /api/v1/reservas/mis-reservas/{id} - Eliminar reserva
-router.delete('/mis-reservas/:id', reservaController.eliminar);
+// DELETE /api/v1/reservas/{id} - Eliminar reserva
+router.delete('/:id', reservaController.eliminar);
 
 module.exports = router;
