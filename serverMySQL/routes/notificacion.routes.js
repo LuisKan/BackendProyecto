@@ -20,5 +20,4 @@ router.put('/:id', notificacionController.actualizar);
 // DELETE /api/v1/notificaciones/{id} - Eliminar notificación
 router.delete('/:id', notificacionController.eliminar);
 
-
 module.exports = router;
