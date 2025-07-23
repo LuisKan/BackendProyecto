@@ -11,7 +11,7 @@ router.get('/', personaController.obtenerTodas);
 router.get('/:id', personaController.obtenerPorId);
 
 // POST /api/personas - Crear nueva persona
-router.post('/', personaController.crear);
+router.post('/', personaController.crear);  
 
 // PUT /api/personas/:id - Actualizar persona
 router.put('/:id', personaController.actualizar);
