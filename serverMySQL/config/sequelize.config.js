@@ -1,17 +1,31 @@
+// Cargar variables de entorno
+require('dotenv').config();
+
 const { Sequelize } = require('sequelize');
 
-const username = 'root';
-const password = 'oscar';
-const bdd_name = 'HostelDB';
-const hostName = 'localhost';
+// Usar variables de entorno en lugar de valores hardcodeados
+const username = process.env.DB_USER || 'root';
+const password = process.env.DB_PASSWORD || 'admin';
+const bdd_name = process.env.DB_NAME || 'hosteldb';
+const hostName = process.env.DB_HOST || 'localhost';
+const port = process.env.DB_PORT || 3306;
+
+console.log('Configuración de BD:', {
+    host: hostName,
+    user: username,
+    database: bdd_name,
+    port: port
+});
 
 const initialSequelize = new Sequelize('', username, password, {
     host: hostName,
+    port: port,
     dialect: 'mysql'
 });
 
 const sequelize = new Sequelize(bdd_name, username, password, {
     host: hostName,
+    port: port,
     dialect: 'mysql'
 });
 
