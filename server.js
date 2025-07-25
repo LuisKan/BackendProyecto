@@ -1,8 +1,11 @@
+// Cargar variables de entorno
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 
 const app = express();
-const port = 3002;
+const port = process.env.PORT || 3002;
 
 // Importar la configuración de Sequelize para inicializar la conexión a la base de datos
 require('./serverMySQL/config/sequelize.config');

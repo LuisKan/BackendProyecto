@@ -1,30 +1,44 @@
 const express = require('express');
 const router = express.Router();
 const personaController = require('../controllers/persona.controller');
+const { protect, authorize } = require('../middlewares/autorization.middleware');
 
-// Rutas CRUD básicas
+// ========== RUTAS PÚBLICAS (Sin autenticación) ==========
 
-// GET /api/personas - Obtener todas las personas
+// POST /api/v1/personas/register - Registrar nueva persona
+router.post('/register', personaController.crear);  
+
+// POST /api/v1/personas/login - Login de persona
+router.post('/login', personaController.login);
+
+// ========== RUTAS PROTEGIDAS (Con autenticación) ==========
+
+// GET /api/v1/personas/perfil - Obtener perfil de persona autenticada
+router.get('/perfil', protect, personaController.obtenerPerfil);
+
+// ========== RUTAS CRUD BÁSICAS ==========
+
+// GET /api/v1/personas - Obtener todas las personas
 router.get('/', personaController.obtenerTodas);
 
-// GET /api/personas/:id - Obtener persona por ID
+// GET /api/v1/personas/buscar?nombre=... - Buscar personas por nombre
+router.get('/buscar', personaController.buscarPorNombre);
+
+// GET /api/v1/personas/:id - Obtener persona por ID
 router.get('/:id', personaController.obtenerPorId);
 
-// POST /api/personas - Crear nueva persona
-router.post('/', personaController.crear);  
+// PUT /api/v1/personas/:id - Actualizar persona (protegida)
+router.put('/:id', protect, personaController.actualizar);
 
-// PUT /api/personas/:id - Actualizar persona
-router.put('/:id', personaController.actualizar);
+// DELETE /api/v1/personas/:id - Eliminar persona (protegida - solo admin)
+router.delete('/:id', protect, authorize('admin'), personaController.eliminar);
 
-// DELETE /api/personas/:id - Eliminar persona
-router.delete('/:id', personaController.eliminar);
+// ========== RUTAS ESPECÍFICAS ==========
 
-// Rutas específicas
-
-// GET /api/personas/correo/:correo - Buscar por correo
+// GET /api/v1/personas/correo/:correo - Buscar por correo
 router.get('/correo/:correo', personaController.buscarPorCorreo);
 
-// GET /api/personas/tipo/:tipo - Obtener personas por tipo (admin/usuario)
+// GET /api/v1/personas/tipo/:tipo - Obtener personas por tipo (admin/usuario)
 router.get('/tipo/:tipo', personaController.obtenerPorTipo);
 
 module.exports = router;
