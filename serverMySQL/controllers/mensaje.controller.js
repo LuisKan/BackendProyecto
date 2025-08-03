@@ -12,7 +12,7 @@ const mensajeController = {
                     },
                     {
                         model: Persona,
-                        as: 'emisor'
+                        as: 'personaEmisor'
                     }
                 ],
                 order: [['fecha', 'DESC']]
@@ -38,7 +38,7 @@ const mensajeController = {
                     },
                     {
                         model: Persona,
-                        as: 'emisor'
+                        as: 'personaEmisor'
                     }
                 ]
             });
@@ -73,7 +73,7 @@ const mensajeController = {
                     },
                     {
                         model: Persona,
-                        as: 'emisor'
+                        as: 'personaEmisor'
                     }
                 ]
             });
@@ -107,7 +107,7 @@ const mensajeController = {
                     },
                     {
                         model: Persona,
-                        as: 'emisor'
+                        as: 'personaEmisor'
                     }
                 ]
             });
@@ -152,7 +152,7 @@ const mensajeController = {
                 where: { conversacion_id: conversacionId },
                 include: [{
                     model: Persona,
-                    as: 'emisor'
+                    as: 'personaEmisor'
                 }],
                 order: [['fecha', 'ASC']],
                 limit: parseInt(limite),
@@ -178,6 +178,10 @@ const mensajeController = {
                     {
                         model: Conversacion,
                         as: 'conversacion'
+                    },
+                    {
+                        model: Persona,
+                        as: 'personaEmisor'
                     }
                 ],
                 order: [['fecha', 'DESC']]
@@ -211,7 +215,7 @@ const mensajeController = {
                     },
                     {
                         model: Persona,
-                        as: 'emisor'
+                        as: 'personaEmisor'
                     }
                 ],
                 order: [['fecha', 'DESC']]
@@ -236,7 +240,7 @@ const mensajeController = {
                 where: { conversacion_id: conversacionId },
                 include: [{
                     model: Persona,
-                    as: 'emisor'
+                    as: 'personaEmisor'
                 }],
                 order: [['fecha', 'DESC']],
                 limit: parseInt(cantidad)
@@ -281,7 +285,7 @@ const mensajeController = {
                 where: whereCondition,
                 include: [{
                     model: Persona,
-                    as: 'emisor'
+                    as: 'personaEmisor'
                 }],
                 order: [['fecha', 'ASC']]
             });
@@ -352,7 +356,7 @@ const mensajeController = {
                     },
                     {
                         model: Persona,
-                        as: 'emisor'
+                        as: 'personaEmisor'
                     }
                 ]
             });
