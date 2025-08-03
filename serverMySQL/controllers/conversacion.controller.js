@@ -1,360 +1,166 @@
 const { Conversacion, ParticipanteConversacion, Persona, Mensaje } = require('../models');
+const { Op } = require('sequelize');
 
 const conversacionController = {
-    // Obtener todas las conversaciones
-    obtenerTodas: async (req, res) => {
+    // ========== FLUJO PRINCIPAL DE CHAT ==========
+    
+    // Buscar o crear conversación entre dos personas (ENDPOINT PRINCIPAL)
+    buscarOCrearConversacion: async (req, res) => {
         try {
-            const conversaciones = await Conversacion.findAll({
-                include: [
-                    {
-                        model: ParticipanteConversacion,
-                        as: 'participantes',
-                        include: [{
-                            model: Persona,
-                            as: 'persona',
-                            attributes: ['id']
-                        }]
-                    },
-                    {
-                        model: Mensaje,
-                        as: 'mensajes',
-                        include: [{
-                            model: Persona,
-                            as: 'personaEmisor',
-                            attributes: ['id']
-                        }],
-                        order: [['fecha', 'ASC']]
-                    }
-                ]
-            });
-
-            // Formatear la respuesta según el formato esperado por el frontend
-            const conversacionesFormateadas = conversaciones.map(conv => {
-                const data = conv.toJSON();
-                
-                // Convertir participantes a array simple de IDs
-                data.participantes = data.participantes ? 
-                    data.participantes.map(p => p.persona.id.toString()) : [];
-                
-                // Formatear mensajes
-                data.mensajes = data.mensajes ? data.mensajes.map(msg => ({
-                    id: msg.id,
-                    emisor: msg.personaEmisor ? msg.personaEmisor.id.toString() : msg.emisor.toString(),
-                    fecha: msg.fecha,
-                    texto: msg.texto
-                })) : [];
-                
-                // Convertir ID a string con prefijo
-                data.id = `conv${data.id}`;
-                
-                return data;
-            });
-
-            res.json(conversacionesFormateadas);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al obtener las conversaciones',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Obtener conversación por ID
-    obtenerPorId: async (req, res) => {
-        try {
-            const { id } = req.params;
+            const { persona1, persona2 } = req.body;
             
-            // Extraer el ID numérico si viene con prefijo
-            const idNumerico = id.toString().startsWith('conv') ? 
-                parseInt(id.toString().replace('conv', '').replace('-', '')) : parseInt(id);
+            // Validaciones
+            if (!persona1 || !persona2) {
+                return res.status(400).json({ 
+                    error: 'Se requieren persona1 y persona2' 
+                });
+            }
             
-            const conversacion = await Conversacion.findByPk(idNumerico, {
-                include: [
-                    {
-                        model: ParticipanteConversacion,
-                        as: 'participantes',
-                        include: [{
-                            model: Persona,
-                            as: 'persona',
-                            attributes: ['id']
-                        }]
-                    },
-                    {
-                        model: Mensaje,
-                        as: 'mensajes',
-                        include: [{
-                            model: Persona,
-                            as: 'personaEmisor',
-                            attributes: ['id']
-                        }],
-                        order: [['fecha', 'ASC']]
-                    }
-                ]
+            if (persona1 === persona2) {
+                return res.status(400).json({ 
+                    error: 'No puedes crear una conversación contigo mismo' 
+                });
+            }
+            
+            // Verificar que ambas personas existen
+            const personas = await Persona.findAll({
+                where: { id: [persona1, persona2] },
+                attributes: ['id', 'primerNombre', 'correo']
             });
             
+            if (personas.length !== 2) {
+                return res.status(404).json({ 
+                    error: 'Una o ambas personas no existen' 
+                });
+            }
+            
+            // Buscar conversación existente entre estas dos personas
+            let conversacion = await conversacionController._buscarConversacionEntrePersonas(persona1, persona2);
+            
+            // Si no existe, crear nueva conversación
             if (!conversacion) {
-                return res.status(404).json({ error: 'Conversación no encontrada' });
+                conversacion = await conversacionController._crearNuevaConversacion([persona1, persona2]);
             }
             
-            // Formatear la respuesta
-            const data = conversacion.toJSON();
-            data.participantes = data.participantes ? 
-                data.participantes.map(p => p.persona.id.toString()) : [];
+            // Obtener conversación completa con mensajes
+            const conversacionCompleta = await conversacionController._obtenerConversacionCompleta(conversacion.id);
             
-            data.mensajes = data.mensajes ? data.mensajes.map(msg => ({
-                id: msg.id,
-                emisor: msg.personaEmisor ? msg.personaEmisor.id.toString() : msg.emisor.toString(),
-                fecha: msg.fecha,
-                texto: msg.texto
-            })) : [];
+            res.json({
+                conversacion: conversacionCompleta,
+                mensaje: conversacion.esNueva ? 'Nueva conversación creada' : 'Conversación encontrada'
+            });
             
-            data.id = `conv${data.id}`;
-            
-            res.json(data);
         } catch (error) {
             res.status(500).json({ 
-                error: 'Error al obtener la conversación',
+                error: 'Error al buscar o crear conversación',
                 detalle: error.message 
             });
         }
     },
 
-    // Crear nueva conversación
-    crear: async (req, res) => {
-        try {
-            const { participantes } = req.body;
-            
-            // Validaciones según tu frontend
-            if (!participantes || participantes.length !== 2) {
-                return res.status(400).json({ 
-                    error: 'Se requieren exactamente dos participantes para crear una conversación' 
-                });
-            }
-            
-            if (participantes[0] === participantes[1]) {
-                return res.status(400).json({ 
-                    error: 'Los participantes deben ser diferentes' 
-                });
-            }
-            
-            // Crear la conversación
-            const nuevaConversacion = await Conversacion.create();
-            
-            // Agregar participantes
-            const participantesData = participantes.map(personaId => ({
-                conversacion_id: nuevaConversacion.id,
-                persona_id: personaId
-            }));
-            
-            await ParticipanteConversacion.bulkCreate(participantesData);
-            
-            // Respuesta formateada según tu frontend
-            const respuesta = {
-                id: `conv${nuevaConversacion.id}`, // Usar el ID real de la base de datos
-                participantes: participantes,
-                mensajes: []
-            };
-            
-            res.status(201).json(respuesta);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al crear la conversación',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Enviar mensaje a conversación (POST /api/v1/conversaciones/:id/mensajes)
+    // Enviar mensaje a una conversación
     enviarMensaje: async (req, res) => {
         try {
             const { id } = req.params;
             const { emisor, texto } = req.body;
             
-            // Extraer el ID numérico si viene con prefijo
-            const idNumerico = id.toString().startsWith('conv') ? 
-                parseInt(id.toString().replace('conv', '').replace('-', '')) : parseInt(id);
+            // Validaciones
+            if (!emisor || !texto) {
+                return res.status(400).json({ 
+                    error: 'Se requieren emisor y texto' 
+                });
+            }
             
-            // Verificar si la conversación existe
-            const conversacion = await Conversacion.findByPk(idNumerico);
+            // Verificar que la conversación existe
+            const conversacion = await Conversacion.findByPk(id);
             if (!conversacion) {
                 return res.status(404).json({ error: 'Conversación no encontrada' });
+            }
+            
+            // Verificar que el emisor es participante de la conversación
+            const esParticipante = await ParticipanteConversacion.findOne({
+                where: {
+                    conversacion_id: id,
+                    persona_id: emisor
+                }
+            });
+            
+            if (!esParticipante) {
+                return res.status(403).json({ 
+                    error: 'No tienes permisos para enviar mensajes en esta conversación' 
+                });
             }
             
             // Crear el mensaje
             const nuevoMensaje = await Mensaje.create({
-                conversacion_id: idNumerico,
+                conversacion_id: id,
                 emisor: emisor,
-                texto: texto,
+                texto: texto.trim(),
                 fecha: new Date()
             });
             
-            // Respuesta formateada según tu frontend
-            const respuesta = {
-                mensaje: 'Mensaje agregado correctamente',
-                mensajeEnviado: {
-                    id: `msg-${Date.now()}`,
-                    emisor: emisor,
-                    texto: texto,
-                    fecha: nuevoMensaje.fecha.toISOString()
-                }
-            };
-            
-            res.status(201).json(respuesta);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'No se pudo procesar el mensaje',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Editar mensaje (PUT /api/v1/conversaciones/:idConversacion/mensajes/:idMensaje)
-    editarMensaje: async (req, res) => {
-        try {
-            const { idConversacion, idMensaje } = req.params;
-            const { texto } = req.body;
-            
-            if (!texto) {
-                return res.status(400).json({ error: "Falta el campo 'texto'" });
-            }
-            
-            // Extraer IDs numéricos
-            const idConvNumerico = idConversacion.toString().startsWith('conv') ? 
-                parseInt(idConversacion.toString().replace('conv', '').replace('-', '')) : parseInt(idConversacion);
-            const idMsgNumerico = idMensaje.toString().replace('msg-', '');
-            
-            // Buscar el mensaje
-            const mensaje = await Mensaje.findOne({
-                where: {
-                    id: idMsgNumerico,
-                    conversacion_id: idConvNumerico
-                },
+            // Obtener el mensaje completo con información del emisor
+            const mensajeCompleto = await Mensaje.findByPk(nuevoMensaje.id, {
                 include: [{
                     model: Persona,
                     as: 'personaEmisor',
-                    attributes: ['id']
+                    attributes: ['id', 'primerNombre']
                 }]
             });
             
-            if (!mensaje) {
-                return res.status(404).json({ error: 'Mensaje no encontrado' });
-            }
-            
-            // Actualizar el mensaje
-            await mensaje.update({ texto });
-            
-            // Respuesta formateada
-            const respuesta = {
+            res.status(201).json({
                 mensaje: {
-                    id: parseInt(idMsgNumerico),
-                    emisor: mensaje.personaEmisor ? mensaje.personaEmisor.id.toString() : mensaje.emisor.toString(),
-                    fecha: mensaje.fecha,
-                    texto: texto
-                }
-            };
-            
-            res.json(respuesta);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al editar el mensaje',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Eliminar mensaje (DELETE /api/v1/conversaciones/:id/mensajes/:mensajeId)
-    eliminarMensaje: async (req, res) => {
-        try {
-            const { id, mensajeId } = req.params;
-            
-            // Extraer IDs numéricos
-            const idConvNumerico = id.toString().startsWith('conv') ? 
-                parseInt(id.toString().replace('conv', '').replace('-', '')) : parseInt(id);
-            const idMsgNumerico = mensajeId.toString().replace('msg-', '');
-            
-            // Verificar si la conversación existe
-            const conversacion = await Conversacion.findByPk(idConvNumerico);
-            if (!conversacion) {
-                return res.status(404).json({ error: 'Conversación no encontrada' });
-            }
-            
-            // Eliminar el mensaje
-            const filasAfectadas = await Mensaje.destroy({
-                where: {
-                    id: idMsgNumerico,
-                    conversacion_id: idConvNumerico
+                    id: mensajeCompleto.id,
+                    emisor: mensajeCompleto.emisor,
+                    emisorNombre: mensajeCompleto.personaEmisor.primerNombre,
+                    texto: mensajeCompleto.texto,
+                    fecha: mensajeCompleto.fecha
                 }
             });
             
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Mensaje no encontrado' });
-            }
-            
-            res.json({ mensaje: 'Mensaje eliminado correctamente' });
         } catch (error) {
             res.status(500).json({ 
-                error: 'Error al eliminar el mensaje',
+                error: 'Error al enviar mensaje',
                 detalle: error.message 
             });
         }
     },
 
-    // Eliminar conversación
-    eliminar: async (req, res) => {
+    // Obtener conversaciones de un usuario
+    obtenerConversacionesUsuario: async (req, res) => {
         try {
-            const { id } = req.params;
+            const { userId } = req.params;
             
-            // Extraer el ID numérico si viene con prefijo
-            const idNumerico = id.toString().startsWith('conv') ? 
-                parseInt(id.toString().replace('conv', '').replace('-', '')) : parseInt(id);
-            
-            // Verificar si la conversación existe
-            const conversacion = await Conversacion.findByPk(idNumerico);
-            if (!conversacion) {
-                return res.status(404).json({ error: 'Conversación no encontrada' });
+            // Verificar que el usuario existe
+            const usuario = await Persona.findByPk(userId);
+            if (!usuario) {
+                return res.status(404).json({ error: 'Usuario no encontrado' });
             }
             
-            // Eliminar mensajes de la conversación
-            await Mensaje.destroy({
-                where: { conversacion_id: idNumerico }
+            // Obtener IDs de conversaciones donde participa el usuario
+            const participacionesUsuario = await ParticipanteConversacion.findAll({
+                where: { persona_id: userId },
+                attributes: ['conversacion_id']
             });
             
-            // Eliminar participantes de la conversación
-            await ParticipanteConversacion.destroy({
-                where: { conversacion_id: idNumerico }
-            });
+            const conversacionIds = participacionesUsuario.map(p => p.conversacion_id);
             
-            // Eliminar la conversación
-            await Conversacion.destroy({
-                where: { id: idNumerico }
-            });
+            if (conversacionIds.length === 0) {
+                return res.json([]);
+            }
             
-            res.json({ mensaje: 'Conversación eliminada correctamente' });
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al eliminar la conversación',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Obtener conversaciones de una persona
-    obtenerPorPersona: async (req, res) => {
-        try {
-            const { personaId } = req.params;
-            
+            // Obtener conversaciones completas
             const conversaciones = await Conversacion.findAll({
+                where: { id: conversacionIds },
                 include: [
                     {
-                        model: Persona,
-                        as: 'personas',
-                        through: { attributes: [] },
-                        where: { id: personaId }
-                    },
-                    {
-                        model: Persona,
-                        as: 'personas',
-                        through: { attributes: [] }
+                        model: ParticipanteConversacion,
+                        as: 'participantes',
+                        include: [{
+                            model: Persona,
+                            as: 'persona',
+                            attributes: ['id', 'primerNombre', 'correo']
+                        }]
                     },
                     {
                         model: Mensaje,
@@ -363,164 +169,222 @@ const conversacionController = {
                         order: [['fecha', 'DESC']],
                         include: [{
                             model: Persona,
-                            as: 'emisor'
+                            as: 'personaEmisor',
+                            attributes: ['id', 'primerNombre']
                         }]
                     }
                 ]
             });
             
-            res.json(conversaciones);
+            // Formatear respuesta
+            const conversacionesFormateadas = conversaciones.map(conv => {
+                const data = conv.toJSON();
+                
+                // Obtener el otro participante (no el usuario actual)
+                const otroParticipante = data.participantes.find(p => p.persona.id != userId);
+                
+                return {
+                    id: data.id,
+                    otroUsuario: otroParticipante ? {
+                        id: otroParticipante.persona.id,
+                        nombre: otroParticipante.persona.primerNombre,
+                        correo: otroParticipante.persona.correo
+                    } : null,
+                    ultimoMensaje: data.mensajes.length > 0 ? {
+                        texto: data.mensajes[0].texto,
+                        fecha: data.mensajes[0].fecha,
+                        emisor: data.mensajes[0].emisor,
+                        emisorNombre: data.mensajes[0].personaEmisor.primerNombre
+                    } : null
+                };
+            });
+            
+            res.json(conversacionesFormateadas);
+            
         } catch (error) {
             res.status(500).json({ 
-                error: 'Error al obtener las conversaciones de la persona',
+                error: 'Error al obtener conversaciones del usuario',
                 detalle: error.message 
             });
         }
     },
 
-    // Agregar participante a conversación
-    agregarParticipante: async (req, res) => {
+    // Obtener mensajes de una conversación
+    obtenerMensajesConversacion: async (req, res) => {
         try {
             const { id } = req.params;
-            const { personaId } = req.body;
+            const { limite = 50, offset = 0 } = req.query;
             
-            // Verificar si la conversación existe
+            // Verificar que la conversación existe
             const conversacion = await Conversacion.findByPk(id);
             if (!conversacion) {
                 return res.status(404).json({ error: 'Conversación no encontrada' });
             }
             
-            // Verificar si la persona ya es participante
-            const participanteExistente = await ParticipanteConversacion.findOne({
-                where: {
-                    conversacion_id: id,
-                    persona_id: personaId
-                }
+            // Obtener mensajes
+            const mensajes = await Mensaje.findAll({
+                where: { conversacion_id: id },
+                include: [{
+                    model: Persona,
+                    as: 'personaEmisor',
+                    attributes: ['id', 'primerNombre']
+                }],
+                order: [['fecha', 'ASC']],
+                limit: parseInt(limite),
+                offset: parseInt(offset)
             });
             
-            if (participanteExistente) {
-                return res.status(400).json({ error: 'La persona ya es participante de esta conversación' });
-            }
+            // Formatear mensajes
+            const mensajesFormateados = mensajes.map(msg => ({
+                id: msg.id,
+                emisor: msg.emisor,
+                emisorNombre: msg.personaEmisor.primerNombre,
+                texto: msg.texto,
+                fecha: msg.fecha
+            }));
             
-            // Agregar participante
-            await ParticipanteConversacion.create({
-                conversacion_id: id,
-                persona_id: personaId
+            res.json({
+                conversacionId: parseInt(id),
+                mensajes: mensajesFormateados,
+                total: mensajes.length
             });
             
-            // Obtener la conversación actualizada
-            const conversacionActualizada = await Conversacion.findByPk(id, {
-                include: [
-                    {
-                        model: Persona,
-                        as: 'personas',
-                        through: { attributes: [] }
-                    }
-                ]
-            });
-            
-            res.json(conversacionActualizada);
         } catch (error) {
             res.status(500).json({ 
-                error: 'Error al agregar participante a la conversación',
+                error: 'Error al obtener mensajes de la conversación',
                 detalle: error.message 
             });
         }
     },
 
-    // Remover participante de conversación
-    removerParticipante: async (req, res) => {
+    // ========== MÉTODOS AUXILIARES PRIVADOS ==========
+    
+    // Buscar conversación existente entre dos personas
+    _buscarConversacionEntrePersonas: async (persona1, persona2) => {
+        // Buscar conversaciones donde participen ambas personas
+        const conversacionesPersona1 = await ParticipanteConversacion.findAll({
+            where: { persona_id: persona1 },
+            attributes: ['conversacion_id']
+        });
+        
+        const conversacionesPersona2 = await ParticipanteConversacion.findAll({
+            where: { persona_id: persona2 },
+            attributes: ['conversacion_id']
+        });
+        
+        // Encontrar conversaciones en común
+        const idsPersona1 = conversacionesPersona1.map(p => p.conversacion_id);
+        const idsPersona2 = conversacionesPersona2.map(p => p.conversacion_id);
+        
+        const conversacionesComunes = idsPersona1.filter(id => idsPersona2.includes(id));
+        
+        if (conversacionesComunes.length === 0) {
+            return null;
+        }
+        
+        // Verificar que la primera conversación común tenga exactamente 2 participantes
+        for (const conversacionId of conversacionesComunes) {
+            const totalParticipantes = await ParticipanteConversacion.count({
+                where: { conversacion_id: conversacionId }
+            });
+            
+            if (totalParticipantes === 2) {
+                const conversacion = await Conversacion.findByPk(conversacionId);
+                return conversacion;
+            }
+        }
+        
+        return null;
+    },
+
+    // Crear nueva conversación
+    _crearNuevaConversacion: async (participantes) => {
+        // Crear conversación
+        const nuevaConversacion = await Conversacion.create();
+        
+        // Agregar participantes
+        const participantesData = participantes.map(personaId => ({
+            conversacion_id: nuevaConversacion.id,
+            persona_id: personaId
+        }));
+        
+        await ParticipanteConversacion.bulkCreate(participantesData);
+        
+        // Marcar como nueva para la respuesta
+        nuevaConversacion.esNueva = true;
+        
+        return nuevaConversacion;
+    },
+
+    // Obtener conversación completa con participantes y mensajes
+    _obtenerConversacionCompleta: async (conversacionId) => {
+        const conversacion = await Conversacion.findByPk(conversacionId, {
+            include: [
+                {
+                    model: ParticipanteConversacion,
+                    as: 'participantes',
+                    include: [{
+                        model: Persona,
+                        as: 'persona',
+                        attributes: ['id', 'primerNombre', 'correo']
+                    }]
+                },
+                {
+                    model: Mensaje,
+                    as: 'mensajes',
+                    include: [{
+                        model: Persona,
+                        as: 'personaEmisor',
+                        attributes: ['id', 'primerNombre']
+                    }],
+                    order: [['fecha', 'ASC']],
+                    limit: 50 // Últimos 50 mensajes
+                }
+            ]
+        });
+        
+        const data = conversacion.toJSON();
+        
+        return {
+            id: data.id,
+            participantes: data.participantes.map(p => ({
+                id: p.persona.id,
+                nombre: p.persona.primerNombre,
+                correo: p.persona.correo
+            })),
+            mensajes: data.mensajes.map(msg => ({
+                id: msg.id,
+                emisor: msg.emisor,
+                emisorNombre: msg.personaEmisor.primerNombre,
+                texto: msg.texto,
+                fecha: msg.fecha
+            }))
+        };
+    },
+
+    // ========== MÉTODOS ADICIONALES ==========
+    
+    // Eliminar conversación completa
+    eliminarConversacion: async (req, res) => {
         try {
             const { id } = req.params;
-            const { personaId } = req.body;
             
-            const filasAfectadas = await ParticipanteConversacion.destroy({
-                where: {
-                    conversacion_id: id,
-                    persona_id: personaId
-                }
-            });
-            
-            if (filasAfectadas === 0) {
-                return res.status(404).json({ error: 'Participante no encontrado en esta conversación' });
+            // Verificar que la conversación existe
+            const conversacion = await Conversacion.findByPk(id);
+            if (!conversacion) {
+                return res.status(404).json({ error: 'Conversación no encontrada' });
             }
             
-            // Obtener la conversación actualizada
-            const conversacionActualizada = await Conversacion.findByPk(id, {
-                include: [
-                    {
-                        model: Persona,
-                        as: 'personas',
-                        through: { attributes: [] }
-                    }
-                ]
-            });
+            // Eliminar en orden: mensajes -> participantes -> conversación
+            await Mensaje.destroy({ where: { conversacion_id: id } });
+            await ParticipanteConversacion.destroy({ where: { conversacion_id: id } });
+            await Conversacion.destroy({ where: { id: id } });
             
-            res.json(conversacionActualizada);
+            res.json({ mensaje: 'Conversación eliminada correctamente' });
+            
         } catch (error) {
             res.status(500).json({ 
-                error: 'Error al remover participante de la conversación',
-                detalle: error.message 
-            });
-        }
-    },
-
-    // Buscar conversación entre dos personas específicas
-    buscarEntrePersonas: async (req, res) => {
-        try {
-            const { persona1Id, persona2Id } = req.query;
-            
-            // Buscar conversaciones donde ambas personas sean participantes
-            const conversaciones = await Conversacion.findAll({
-                include: [
-                    {
-                        model: ParticipanteConversacion,
-                        as: 'participantes',
-                        where: {
-                            persona_id: persona1Id
-                        }
-                    }
-                ]
-            });
-            
-            // Filtrar conversaciones que también incluyan a la segunda persona
-            const conversacionesComunes = [];
-            for (const conv of conversaciones) {
-                const participante2 = await ParticipanteConversacion.findOne({
-                    where: {
-                        conversacion_id: conv.id,
-                        persona_id: persona2Id
-                    }
-                });
-                
-                if (participante2) {
-                    const conversacionCompleta = await Conversacion.findByPk(conv.id, {
-                        include: [
-                            {
-                                model: Persona,
-                                as: 'personas',
-                                through: { attributes: [] }
-                            },
-                            {
-                                model: Mensaje,
-                                as: 'mensajes',
-                                limit: 1,
-                                order: [['fecha', 'DESC']],
-                                include: [{
-                                    model: Persona,
-                                    as: 'emisor'
-                                }]
-                            }
-                        ]
-                    });
-                    conversacionesComunes.push(conversacionCompleta);
-                }
-            }
-            
-            res.json(conversacionesComunes);
-        } catch (error) {
-            res.status(500).json({ 
-                error: 'Error al buscar conversaciones entre personas',
+                error: 'Error al eliminar conversación',
                 detalle: error.message 
             });
         }
