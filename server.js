@@ -11,15 +11,20 @@ const port = process.env.PORT || 3002;
 require('./serverMySQL/config/sequelize.config');
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Importar las rutas principales
 const apiRoutes = require('./serverMySQL/routes');
 
-// Usar las rutas con el prefijo /api/v1
-app.use('/api/v1', apiRoutes);
+// Usar las rutas con el prefijo /api
+app.use('/api', apiRoutes);
 
 // Ruta raíz para verificar que el servidor está funcionando
 app.get('/', (req, res) => {

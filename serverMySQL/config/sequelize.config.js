@@ -5,8 +5,8 @@ const { Sequelize } = require('sequelize');
 
 // Usar variables de entorno en lugar de valores hardcodeados
 const username = process.env.DB_USER || 'root';
-const password = process.env.DB_PASSWORD || 'admin';
-const bdd_name = process.env.DB_NAME || 'hosteldb';
+const password = process.env.DB_PASS || '';
+const bdd_name = process.env.DB_NAME || 'HostelDB';
 const hostName = process.env.DB_HOST || 'localhost';
 const port = process.env.DB_PORT || 3306;
 
